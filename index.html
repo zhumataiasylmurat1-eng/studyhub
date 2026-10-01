@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyHub — Учебный хаб с Канбан-доской</title>
+
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['Unbounded', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        colors: {
+          paper: { DEFAULT: '#F3F4F0', dark: '#14161C' },
+          ink:   { DEFAULT: '#20222B', dark: '#ECEAE2' },
+        }
+      }
+    }
+  }
+</script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<style>
+  :root{
+    --paper: #F3F4F0;
+    --paper-line: #DEDCD0;
+    --ink: #20222B;
+    --ink-soft: #6B6E76;
+    --card: #FFFFFF;
+    --accent: #2B3A67;
+    --accent-soft: #E7EAF5;
+    --danger: #E0523C;
+    --warn: #E0A62B;
+    --ok: #2E9E6B;
+  }
+  html.dark{
+    --paper: #14161C;
+    --paper-line: #262933;
+    --ink: #ECEAE2;
+    --ink-soft: #9A9DA8;
+    --card: #1C1F27;
+    --accent: #8FA3E0;
+    --accent-soft: #232A42;
+    --danger: #F07A64;
+    --warn: #F0C260;
+    --ok: #4FC98B;
+  }
+
+  body{
+    background-color: var(--paper);
+    color: var(--ink);
+    background-image: linear-gradient(var(--paper-line) 1px, transparent 1px);
+    background-size: 100% 2.1rem;
+    background-position: 0 5.2rem;
+  }
+
+  .margin-rule{
+    position: fixed;
+    top: 0; bottom: 0;
+    left: 3.6rem;
+    width: 1px;
+    background: rgba(224,82,60,0.35);
+    z-index: 0;
+  }
+  @media (max-width: 767px){ .margin-rule{ display:none; } }
+
+  .card{
+    background: var(--card);
+    border: 1px solid var(--paper-line);
+  }
+
+  .tab-card{
+    position: relative;
+    border-radius: 0 14px 14px 14px;
+  }
+  .tab-card::before{
+    content: attr(data-tab);
+    position: absolute;
+    top: -1.35rem;
+    left: -1px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.28rem 0.6rem;
+    border-radius: 8px 8px 0 0;
+    color: white;
+    background: var(--tab-color, var(--accent));
+  }
+
+  .scrollbar-thin::-webkit-scrollbar{ height: 6px; width: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb{ background: var(--paper-line); border-radius: 4px; }
+
+  .tag-pill{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+  }
+
+  .fade-in{ animation: fadeIn .25s ease both; }
+  @keyframes fadeIn{ from{ opacity:0; transform: translateY(4px);} to{ opacity:1; transform:none; } }
+
+  .modal-backdrop{
+    background: rgba(20,22,28,0.55);
+    backdrop-filter: blur(2px);
+  }
+
+  /* Drag and drop styles */
+  .kanban-col{
+    min-height: 280px;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  }
+  .kanban-col.drag-over{
+    background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: var(--accent);
+    transform: scale(1.01);
+  }
+  .draggable-card{
+    cursor: grab;
+    user-select: none;
+    transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, opacity 0.2s ease;
+  }
+  .draggable-card:active{
+    cursor: grabbing;
+  }
+  .draggable-card.is-dragging{
+    opacity: 0.35;
+    transform: scale(0.95) rotate(-1deg);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  }
+
+  /* iPhone Style Picker Wheel */
+  .ios-picker-container {
+    position: relative;
+    height: 150px;
+    overflow: hidden;
+    mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+  }
+  .ios-picker-wheel {
+    height: 100%;
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    scrollbar-width: none;
+  }
+  .ios-picker-wheel::-webkit-scrollbar { display: none; }
+  .ios-picker-item {
+    height: 40px;
+    scroll-snap-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    transition: color 0.15s, transform 0.15s;
+    cursor: pointer;
+  }
+  .ios-picker-item.selected {
+    color: var(--ink);
+    font-size: 1.6rem;
+    font-weight: 700;
+  }
+  .ios-picker-highlight {
+    position: absolute;
+    top: 55px;
+    left: 0; right: 0;
+    height: 40px;
+    border-top: 1px solid var(--paper-line);
+    border-bottom: 1px solid var(--paper-line);
+    pointer-events: none;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-radius: 8px;
+  }
+
+  ::selection{ background: var(--accent-soft); }
+  input, textarea, select{ color: var(--ink); }
+  input::placeholder, textarea::placeholder{ color: var(--ink-soft); }
+
+  .focus-ring:focus-visible{
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body class="font-body min-h-screen relative">
+<div class="margin-rule"></div>
+
+<!-- ============ TOP BAR ============ -->
+<header class="sticky top-0 z-30 backdrop-blur border-b" style="background: color-mix(in srgb, var(--paper) 88%, transparent); border-color: var(--paper-line);">
+  <div class="max-w-6xl mx-auto px-4 md:px-8 py-3 flex items-center gap-3 flex-wrap">
+    
+    <!-- Logo -->
+    <div class="flex items-center gap-2 mr-2 cursor-pointer" onclick="showSubjectsList()">
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white font-display font-bold text-sm" style="background: var(--accent);">SH</div>
+      <div>
+        <div class="font-display font-bold text-base leading-none">StudyHub</div>
+        <div class="text-[11px] font-mono" style="color: var(--ink-soft);">учебный органайзер</div>
+      </div>
+    </div>
+
+    <!-- Class Selector -->
+    <select id="classSelect" class="focus-ring px-3 py-2 rounded-lg card text-sm font-medium cursor-pointer">
+    </select>
+
+    <!-- Quarter Selector -->
+    <select id="quarterSelect" class="focus-ring px-3 py-2 rounded-lg card text-sm font-medium cursor-pointer">
+      <option value="1">1 четверть</option>
+      <option value="2">2 четверть</option>
+      <option value="3">3 четверть</option>
+      <option value="4">4 четверть</option>
+    </select>
+
+    <!-- Global Search -->
+    <div class="flex-1 min-w-[200px] relative">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--ink-soft);"></i>
+      <input id="searchInput" type="text" placeholder="Искать темы, конспекты или в сети..."
+        class="focus-ring w-full pl-9 pr-8 py-2 rounded-lg card text-sm">
+      <button id="clearSearchBtn" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+
+    <!-- Quick Tools -->
+    <div class="flex items-center gap-2">
+      <!-- Pomodoro Widget Trigger -->
+      <button id="pomoBtn" title="Настроить Таймер" class="focus-ring flex items-center gap-1.5 px-3 py-2 rounded-lg card text-sm font-medium hover:border-amber-500 transition">
+        <i data-lucide="timer" class="w-4 h-4 text-amber-500"></i>
+        <span id="pomoDisplay" class="font-mono text-xs">25:00</span>
+      </button>
+
+      <!-- Quick Note -->
+      <button id="quickNoteBtn" class="focus-ring flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white" style="background: var(--warn);">
+        <i data-lucide="zap" class="w-4 h-4"></i><span class="hidden sm:inline">Заметка</span>
+      </button>
+
+      <!-- Backup Export/Import -->
+      <button id="exportBtn" title="Скачать резервную копию" class="focus-ring w-9 h-9 rounded-lg card flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800">
+        <i data-lucide="download" class="w-4 h-4"></i>
+      </button>
+      <button id="importBtn" title="Загрузить резервную копию" class="focus-ring w-9 h-9 rounded-lg card flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800">
+        <i data-lucide="upload" class="w-4 h-4"></i>
+      </button>
+      <input type="file" id="importFileInput" class="hidden" accept=".json">
+
+      <!-- Theme Toggle -->
+      <button id="themeToggle" class="focus-ring w-9 h-9 rounded-lg card flex items-center justify-center">
+        <i data-lucide="moon" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 md:px-8 py-8 relative z-10">
+
+  <!-- ============ SEARCH RESULTS PAGE ============ -->
+  <section id="searchResults" class="hidden mb-10 fade-in">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-display font-bold text-lg flex items-center gap-2"><i data-lucide="search" class="w-5 h-5"></i>Результаты поиска</h2>
+      <span id="searchCount" class="text-xs font-mono" style="color: var(--ink-soft);"></span>
+    </div>
+
+    <!-- Web Search Quick Launchers -->
+    <div id="webSearchLaunchers" class="mb-6 card rounded-xl p-4 bg-blue-50/50 dark:bg-gray-800/40 border-dashed">
+      <div class="text-xs font-semibold mb-2 uppercase tracking-wider" style="color: var(--ink-soft);">Искать запрос в Интернете:</div>
+      <div id="webSearchButtons" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <div id="searchResultsList" class="grid sm:grid-cols-2 gap-3"></div>
+  </section>
+
+  <div id="normalView">
+    <!-- ============ DEADLINES ============ -->
+    <section class="mb-10">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-display font-bold text-lg flex items-center gap-2">
+          <i data-lucide="alarm-clock" class="w-4 h-4" style="color: var(--danger);"></i>
+          Ближайшие дедлайны
+        </h2>
+        <span id="deadlineCount" class="tag-pill px-2 py-0.5 rounded-full" style="background: var(--accent-soft); color: var(--accent);"></span>
+      </div>
+      <div id="deadlinesList" class="flex gap-3 overflow-x-auto pb-2 scrollbar-thin"></div>
+    </section>
+
+    <!-- ============ QUICK NOTES STRIP ============ -->
+    <section id="quickNotesSection" class="mb-10 hidden">
+      <h2 class="font-display font-bold text-lg mb-3 flex items-center gap-2">
+        <i data-lucide="sticky-note" class="w-4 h-4" style="color: var(--warn);"></i>Быстрые заметки
+      </h2>
+      <div id="quickNotesList" class="flex gap-3 overflow-x-auto pb-2 scrollbar-thin"></div>
+    </section>
+
+    <!-- ============ SUBJECTS ============ -->
+    <section>
+      <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <h2 class="font-display font-bold text-lg flex items-center gap-2">
+            <i data-lucide="layout-grid" class="w-4 h-4"></i>Предметы<span id="classLabel" class="font-mono text-sm font-normal" style="color: var(--ink-soft);"></span>
+          </h2>
+          <p class="text-xs font-mono" style="color: var(--ink-soft);">Ориентация: <span id="quarterLabel">1 четверть</span></p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="loadPresetBtn" title="Загрузить готовые предметы и темы для выбранного класса и четверти" class="focus-ring flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border hover:border-blue-500 transition" style="border-color: var(--paper-line);">
+            <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>Загрузить темы четверти
+          </button>
+          <button id="addSubjectBtn" class="focus-ring flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border hover:shadow-sm transition" style="border-color: var(--paper-line);">
+            <i data-lucide="plus" class="w-4 h-4"></i>Предмет
+          </button>
+        </div>
+      </div>
+      <div id="subjectsGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-8"></div>
+    </section>
+  </div>
+
+  <!-- ============ SUBJECT DETAIL VIEW ============ -->
+  <div id="subjectView" class="hidden fade-in">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <button id="backToSubjects" class="focus-ring flex items-center gap-1.5 text-sm font-medium hover:text-blue-500 transition" style="color: var(--ink-soft);">
+        <i data-lucide="arrow-left" class="w-4 h-4"></i>Все предметы
+      </button>
+
+      <!-- View switcher (Grid vs Kanban Board) -->
+      <div class="flex items-center p-1 rounded-lg card text-xs font-medium gap-1">
+        <button id="viewGridBtn" class="focus-ring px-3 py-1.5 rounded-md transition flex items-center gap-1 bg-gray-200 dark:bg-gray-700">
+          <i data-lucide="grid" class="w-3.5 h-3.5"></i>Сетка
+        </button>
+        <button id="viewBoardBtn" class="focus-ring px-3 py-1.5 rounded-md transition flex items-center gap-1">
+          <i data-lucide="kanban" class="w-3.5 h-3.5"></i>Канбан-доска
+        </button>
+      </div>
+    </div>
+
+    <!-- Header & Progress -->
+    <div class="card p-5 rounded-2xl mb-6">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <div>
+          <h2 id="subjectViewTitle" class="font-display font-bold text-2xl"></h2>
+          <p id="subjectViewSub" class="text-xs font-mono mt-1" style="color: var(--ink-soft);"></p>
+        </div>
+        <button id="addTopicBtn" class="focus-ring flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white shadow-sm hover:opacity-90 transition" style="background: var(--accent);">
+          <i data-lucide="plus" class="w-4 h-4"></i>Новая тема
+        </button>
+      </div>
+      <!-- Progress Bar -->
+      <div class="w-full bg-gray-200 dark:bg-gray-700 h-2.5 rounded-full overflow-hidden flex">
+        <div id="subjectProgressBar" class="h-full transition-all duration-300" style="background: var(--ok); width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- VIEW 1: GRID VIEW -->
+    <div id="topicsGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    <!-- VIEW 2: KANBAN BOARD VIEW -->
+    <div id="topicsBoard" class="hidden grid md:grid-cols-3 gap-4 items-start">
+      
+      <!-- Column: Todo -->
+      <div class="card rounded-2xl p-4 bg-red-500/5 border-red-500/20">
+        <div class="flex items-center justify-between mb-3 pb-2 border-b border-red-500/20">
+          <span class="font-display font-bold text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400">
+            <i data-lucide="circle-dashed" class="w-4 h-4"></i>Надо выучить
+          </span>
+          <span id="countTodo" class="text-xs font-mono px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40">0</span>
+        </div>
+        <div id="colTodo" class="kanban-col space-y-3 rounded-xl p-1" data-status="todo"></div>
+      </div>
+
+      <!-- Column: In Progress -->
+      <div class="card rounded-2xl p-4 bg-amber-500/5 border-amber-500/20">
+        <div class="flex items-center justify-between mb-3 pb-2 border-b border-amber-500/20">
+          <span class="font-display font-bold text-sm flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+            <i data-lucide="clock" class="w-4 h-4"></i>В процессе
+          </span>
+          <span id="countInProgress" class="text-xs font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40">0</span>
+        </div>
+        <div id="colInProgress" class="kanban-col space-y-3 rounded-xl p-1" data-status="in_progress"></div>
+      </div>
+
+      <!-- Column: Done -->
+      <div class="card rounded-2xl p-4 bg-emerald-500/5 border-emerald-500/20">
+        <div class="flex items-center justify-between mb-3 pb-2 border-b border-emerald-500/20">
+          <span class="font-display font-bold text-sm flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i>Готово
+          </span>
+          <span id="countDone" class="text-xs font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40">0</span>
+        </div>
+        <div id="colDone" class="kanban-col space-y-3 rounded-xl p-1" data-status="done"></div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- ============ POMODORO MODAL (iOS STYLE PICKER) ============ -->
+<div id="pomoModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+  <div class="card w-full max-w-sm rounded-2xl p-6 text-center fade-in relative">
+    <button id="closePomoModal" class="focus-ring absolute top-4 right-4 w-8 h-8 rounded-lg flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    <div class="font-display font-bold text-lg mb-1 flex items-center justify-center gap-2">
+      <i data-lucide="timer" class="w-5 h-5 text-amber-500"></i>Таймер учебы
+    </div>
+    <p class="text-xs mb-4" style="color: var(--ink-soft);">Настройте часы и минуты, как на iPhone</p>
+    
+    <!-- iPhone Wheel Time Picker -->
+    <div class="grid grid-cols-2 gap-2 my-4 card rounded-xl p-3 bg-gray-50/50 dark:bg-gray-800/40 relative">
+      <div class="ios-picker-highlight"></div>
+      <div>
+        <div class="text-[10px] font-mono mb-1 uppercase tracking-wider" style="color: var(--ink-soft);">Часы</div>
+        <div class="ios-picker-container">
+          <div id="pickerHours" class="ios-picker-wheel"></div>
+        </div>
+      </div>
+      <div>
+        <div class="text-[10px] font-mono mb-1 uppercase tracking-wider" style="color: var(--ink-soft);">Минуты</div>
+        <div class="ios-picker-container">
+          <div id="pickerMinutes" class="ios-picker-wheel"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Big Display -->
+    <div id="pomoBigTimer" class="font-mono font-bold text-4xl my-3 tracking-wider" style="color: var(--ink);">00:25:00</div>
+    
+    <div class="flex items-center justify-center gap-3 mt-4">
+      <button id="pomoStartBtn" class="focus-ring px-6 py-2.5 rounded-xl font-medium text-white shadow-md transition" style="background: var(--accent);">Старт</button>
+      <button id="pomoResetBtn" class="focus-ring px-4 py-2.5 rounded-xl font-medium border" style="border-color: var(--paper-line);">Сброс</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TOPIC DETAIL & EDIT MODAL ============ -->
+<div id="topicModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-start md:items-center justify-center p-0 md:p-6 overflow-y-auto">
+  <div class="card w-full md:max-w-3xl md:rounded-2xl min-h-screen md:min-h-0 md:max-h-[90vh] flex flex-col fade-in">
+    
+    <!-- Top Bar inside Modal -->
+    <div class="flex items-center justify-between p-4 md:p-5 border-b" style="border-color: var(--paper-line);">
+      <div class="flex-1 mr-3 flex items-center gap-3">
+        <input id="topicTitleInput" class="focus-ring font-display font-bold text-lg bg-transparent flex-1" placeholder="Название темы">
+        <select id="topicStatusSelect" class="focus-ring text-xs font-mono px-2 py-1 rounded-lg card cursor-pointer">
+          <option value="todo">🔴 Надо выучить</option>
+          <option value="in_progress">🟡 В процессе</option>
+          <option value="done">🟢 Готово</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="deleteTopicBtn" title="Удалить тему" class="focus-ring w-8 h-8 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        <button id="closeTopicModal" class="focus-ring w-8 h-8 rounded-lg flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+    </div>
+
+    <div class="p-4 md:p-5 space-y-6 overflow-y-auto scrollbar-thin flex-1">
+
+      <!-- Conspect Editor -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="text-xs font-mono uppercase tracking-wide" style="color: var(--ink-soft);">Мой Конспект</label>
+          <!-- Formatting toolbar -->
+          <div class="flex items-center gap-1">
+            <button type="button" class="fmt-btn focus-ring px-2 py-0.5 text-xs rounded border hover:bg-gray-100 dark:hover:bg-gray-800" data-fmt="# ">H1</button>
+            <button type="button" class="fmt-btn focus-ring px-2 py-0.5 text-xs rounded border hover:bg-gray-100 dark:hover:bg-gray-800" data-fmt="## ">H2</button>
+            <button type="button" class="fmt-btn focus-ring px-2 py-0.5 text-xs rounded border hover:bg-gray-100 dark:hover:bg-gray-800" data-fmt="- ">• Список</button>
+            <button type="button" class="fmt-btn focus-ring px-2 py-0.5 text-xs rounded border hover:bg-gray-100 dark:hover:bg-gray-800" data-fmt="**текст**"><b>B</b></button>
+          </div>
+        </div>
+        <textarea id="topicConspect" rows="6" placeholder="Пиши конспект здесь... Можно использовать списки через «-» и заголовки через «#»."
+          class="focus-ring w-full p-3 rounded-lg card text-sm leading-relaxed resize-y font-body"></textarea>
+      </div>
+
+      <!-- Homework & Deadline -->
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label class="text-xs font-mono uppercase tracking-wide" style="color: var(--ink-soft);">Домашнее задание</label>
+          <textarea id="topicHomework" rows="2" placeholder="Что нужно сделать..." class="focus-ring w-full mt-1.5 p-3 rounded-lg card text-sm resize-y"></textarea>
+        </div>
+        <div>
+          <label class="text-xs font-mono uppercase tracking-wide" style="color: var(--ink-soft);">Сдать до</label>
+          <input id="topicDueDate" type="date" class="focus-ring w-full mt-1.5 p-3 rounded-lg card text-sm">
+        </div>
+      </div>
+
+      <!-- Attached Links / Files -->
+      <div>
+        <label class="text-xs font-mono uppercase tracking-wide" style="color: var(--ink-soft);">Материалы и ссылки к теме</label>
+        <div id="topicLinksList" class="mt-1.5 space-y-2"></div>
+        <div class="flex gap-2 mt-2">
+          <input id="newLinkTitle" placeholder="Название" class="focus-ring flex-1 px-3 py-1.5 rounded-lg card text-sm">
+          <input id="newLinkUrl" placeholder="https://..." class="focus-ring flex-[2] px-3 py-1.5 rounded-lg card text-sm">
+          <button id="addLinkBtn" class="focus-ring px-3 py-1.5 rounded-lg text-sm font-medium border hover:bg-gray-100 dark:hover:bg-gray-800">+</button>
+        </div>
+      </div>
+
+      <!-- Tags -->
+      <div>
+        <label class="text-xs font-mono uppercase tracking-wide" style="color: var(--ink-soft);">Теги</label>
+        <div id="topicTagsList" class="flex flex-wrap gap-1.5 mt-1.5"></div>
+        <input id="newTagInput" placeholder="Введи тег и нажми Enter (например: #экзамен)" class="focus-ring w-full mt-2 px-3 py-1.5 rounded-lg card text-sm">
+      </div>
+
+      <hr style="border-color: var(--paper-line);">
+
+      <!-- SMART BLOCK: BROWSER & WEB RESOURCES -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="font-display font-bold text-sm flex items-center gap-1.5"><i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>Умный поиск ресурсов из Интернета</h3>
+          <button id="fetchWebResourcesBtn" class="focus-ring text-xs font-medium px-3 py-1.5 rounded-lg text-white shadow-sm flex items-center gap-1" style="background-color: var(--accent);">
+            <i data-lucide="globe" class="w-3.5 h-3.5"></i>Найти материалы в сети
+          </button>
+        </div>
+
+        <!-- Dynamic Simulated Web Results -->
+        <div id="webResourcesResult" class="hidden space-y-2 card rounded-xl p-3 bg-gray-50/50 dark:bg-gray-800/30"></div>
+        
+        <!-- Video Recommendations -->
+        <div class="card rounded-xl p-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-medium flex items-center gap-1.5"><i data-lucide="youtube" class="w-4 h-4 text-red-500"></i>Рекомендованные видеоуроки</div>
+            <button id="findVideosBtn" class="focus-ring text-xs font-medium px-2.5 py-1.5 rounded-lg border hover:bg-gray-100 dark:hover:bg-gray-800">Подобрать видео</button>
+          </div>
+          <div id="videosResult" class="mt-3 grid sm:grid-cols-2 gap-2"></div>
+        </div>
+
+        <!-- TL;DR Summary -->
+        <div class="card rounded-xl p-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-medium flex items-center gap-1.5"><i data-lucide="list-checks" class="w-4 h-4 text-emerald-500"></i>Краткая выжимка (TL;DR)</div>
+            <button id="genTldrBtn" class="focus-ring text-xs font-medium px-2.5 py-1.5 rounded-lg border hover:bg-gray-100 dark:hover:bg-gray-800">Сгенерировать</button>
+          </div>
+          <ul id="tldrResult" class="mt-3 space-y-1.5 text-sm"></ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============ SUBJECT ADD MODAL ============ -->
+<div id="subjectModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+  <div class="card w-full max-w-sm rounded-2xl p-5 fade-in">
+    <h3 class="font-display font-bold text-lg mb-4">Новый предмет</h3>
+    <label class="text-xs font-mono uppercase tracking-wide" style="color: var(--ink-soft);">Название</label>
+    <input id="newSubjectName" placeholder="Например: Информатика" class="focus-ring w-full mt-1.5 mb-4 px-3 py-2 rounded-lg card text-sm">
+    <label class="text-xs font-mono uppercase tracking-wide" style="color: var(--ink-soft);">Цвет обложки</label>
+    <div id="colorPicker" class="flex flex-wrap gap-2 mt-1.5 mb-5"></div>
+    <div class="flex gap-2 justify-end">
+      <button id="cancelSubjectBtn" class="focus-ring px-3 py-2 rounded-lg text-sm font-medium border">Отмена</button>
+      <button id="saveSubjectBtn" class="focus-ring px-3 py-2 rounded-lg text-sm font-medium text-white" style="background: var(--accent);">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ QUICK NOTE MODAL ============ -->
+<div id="quickNoteModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+  <div class="card w-full max-w-sm rounded-2xl p-5 fade-in">
+    <h3 class="font-display font-bold text-lg mb-4 flex items-center gap-1.5"><i data-lucide="zap" class="w-4 h-4" style="color: var(--warn);"></i>Быстрая заметка</h3>
+    <textarea id="quickNoteText" rows="3" placeholder="Запиши важное..." class="focus-ring w-full mb-3 px-3 py-2 rounded-lg card text-sm"></textarea>
+    <input id="quickNoteLink" placeholder="Ссылка (необязательно)" class="focus-ring w-full mb-5 px-3 py-2 rounded-lg card text-sm">
+    <div class="flex gap-2 justify-end">
+      <button id="cancelQuickNoteBtn" class="focus-ring px-3 py-2 rounded-lg text-sm font-medium border">Отмена</button>
+      <button id="saveQuickNoteBtn" class="focus-ring px-3 py-2 rounded-lg text-sm font-medium text-white" style="background: var(--warn);">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   STUDYHUB — STATE & STORAGE MANAGEMENT
+   ============================================================ */
+
+const STORAGE_KEY = 'studyhub_data_v3';
+const THEME_KEY = 'studyhub_theme';
+
+const SUBJECT_COLORS = [
+  '#3B6EFF', '#7C5CFF', '#16A897', '#D98E04',
+  '#E0523C', '#2E9E6B', '#C2478A', '#5C7CFA'
+];
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function daysUntil(dateStr){
+  if(!dateStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = new Date(dateStr + 'T00:00:00');
+  return Math.round((due - today) / 86400000);
+}
+
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+/* Curriculum Preset Database per Class & Quarter */
+function getQuarterPresets(cls, qtr) {
+  const in3 = new Date(Date.now() + 3*86400000).toISOString().slice(0,10);
+  const in5 = new Date(Date.now() + 5*86400000).toISOString().slice(0,10);
+
+  const presetsDB = {
+    // 9th - 10th grade samples & generic school topics
+    10: {
+      1: [
+        { subject: 'Алгебра', color: '#3B6EFF', title: 'Функции и их свойства', conspect: '# Функции\nОбласть определения, четность, возрастание и убывание функций.', hw: 'Решить №45-50', tag: '#1четверть' },
+        { subject: 'Физика', color: '#7C5CFF', title: 'Кинематика и векторная скорость', conspect: '# Кинематика\nУравнения прямолинейного равноускоренного движения.', hw: 'Задачи 3.1-3.5', tag: '#1четверть' },
+        { subject: 'Информатика', color: '#16A897', title: 'Алгоритмы и структуры данных', conspect: '# Структуры данных\nМассивы, списки, сложность алгоритмов O(n).', hw: 'Лабораторная №1', tag: '#1четверть' }
+      ],
+      2: [
+        { subject: 'Алгебра', color: '#3B6EFF', title: 'Тригонометрические функции', conspect: '# Тригонометрия\nSin, Cos, Tan на единичной окружности.', hw: 'Упражнения №110-115', tag: '#2четверть' },
+        { subject: 'Физика', color: '#7C5CFF', title: 'Законы динамики Ньютона', conspect: '# Динамика\nЗаконы Ньютона, силы в механике.', hw: 'Задачи 8.12', tag: '#2четверть' },
+        { subject: 'История', color: '#D98E04', title: 'Новое время и технический прогресс', conspect: '# Промышленная революция\nИзобретения 19 века.', hw: 'Параграф 14 конспект', tag: '#2четверть' }
+      ],
+      3: [
+        { subject: 'Алгебра', color: '#3B6EFF', title: 'Показательные уравнения', conspect: '# Свойства степеней\na^x = b, методы решения уравнений.', hw: '№201-210', tag: '#3четверть' },
+        { subject: 'Биология', color: '#2E9E6B', title: 'Молекулярная биология и ДНК', conspect: '# Структура ДНК\nНуклеотиды: Аденин, Тимин, Гуанин, Цитозин.', hw: 'Схема репликации', tag: '#3четверть' },
+        { subject: 'Английский язык', color: '#5C7CFA', title: 'Advanced Grammar & IELTS Writing', conspect: '# Essay Structure\nIntroduction, Body Paragraphs, Conclusion.', hw: 'Написать эссе 250 слов', tag: '#3четверть' }
+      ],
+      4: [
+        { subject: 'Алгебра', color: '#3B6EFF', title: 'Логарифмы и их свойства', conspect: '# Логарифм\nlog_a(b) = c. Основное логарифмическое тождество.', hw: 'Подготовка к Итоговой СОР', tag: '#4четверть' },
+        { subject: 'Химия', color: '#C2478A', title: 'Органическая химия и углеводороды', conspect: '# Углеводороды\nАлканы, алкены, алкины. Номенклатура ИЮПАК.', hw: 'Цепочка превращений №4', tag: '#4четверть' }
+      ]
+    }
+  };
+
+  const defaultTopics = [
+    { subject: 'Математика', color: '#3B6EFF', title: `Основная программа (${cls} класс, ${qtr} четверть)`, conspect: `# Математика ${cls} класс\nКлючевые темы и формулы ${qtr}-й четверти.`, hw: 'Выполнить задания', tag: `#${qtr}четверть` },
+    { subject: 'Физика', color: '#7C5CFF', title: `Раздел ${qtr} четверти`, conspect: `# Физика\nТеоретический материал и законы.`, hw: 'Параграфы 1-3', tag: `#${qtr}четверть` },
+    { subject: 'Информатика', color: '#16A897', title: `Практика (${qtr} четверть)`, conspect: `# Информатика\nАлгоритмы и основы программирования.`, hw: 'Решить задачи на ПК', tag: `#${qtr}четверть` }
+  ];
+
+  const classData = presetsDB[cls] && presetsDB[cls][qtr] ? presetsDB[cls][qtr] : defaultTopics;
+
+  const subjectsMap = {};
+  classData.forEach(item => {
+    if(!subjectsMap[item.subject]){
+      subjectsMap[item.subject] = {
+        id: uid(),
+        name: item.subject,
+        class: cls,
+        color: item.color,
+        topics: []
+      };
+    }
+    subjectsMap[item.subject].topics.push({
+      id: uid(),
+      subjectId: subjectsMap[item.subject].id,
+      title: item.title,
+      status: 'todo',
+      conspect: item.conspect,
+      homework: { text: item.hw, dueDate: in3 },
+      links: [{ title: 'Учебные материалы', url: 'https://ru.wikipedia.org' }],
+      tags: [item.tag, '#учеба'],
+      createdAt: Date.now()
+    });
+  });
+
+  return Object.values(subjectsMap);
+}
+
+/* Initial Demo Data */
+function demoData(){
+  return {
+    selectedClass: 10,
+    selectedQuarter: 1,
+    darkMode: false,
+    viewMode: 'grid',
+    subjects: getQuarterPresets(10, 1),
+    quickNotes: [
+      { id: uid(), text: 'Подготовиться к СОР по математике', link: '', createdAt: Date.now() }
+    ]
+  };
+}
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){ console.error('Error reading localStorage', e); }
+  const d = demoData();
+  saveData(d);
+  return d;
+}
+
+function saveData(dataToSave = state){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave)); }
+  catch(e){ console.error('Error saving localStorage', e); }
+}
+
+let state = loadData();
+if(!state.selectedQuarter) state.selectedQuarter = 1;
+
+let currentSubjectId = null;
+let currentTopicId = null;
+let pickedColor = SUBJECT_COLORS[0];
+
+/* ============================================================
+   THEME SWITCHER
+   ============================================================ */
+function applyTheme(){
+  const dark = localStorage.getItem(THEME_KEY) === 'dark';
+  document.documentElement.classList.toggle('dark', dark);
+  const icon = document.querySelector('#themeToggle i');
+  if(icon) icon.setAttribute('data-lucide', dark ? 'sun' : 'moon');
+  lucide.createIcons();
+}
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const dark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+  applyTheme();
+});
+
+/* ============================================================
+   CLASS & QUARTER SELECTORS
+   ============================================================ */
+function renderClassSelect(){
+  const sel = document.getElementById('classSelect');
+  sel.innerHTML = '';
+  for(let c=1; c<=11; c++){
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c + ' класс';
+    if(c === state.selectedClass) opt.selected = true;
+    sel.appendChild(opt);
+  }
+
+  const qSel = document.getElementById('quarterSelect');
+  qSel.value = state.selectedQuarter;
+}
+
+document.getElementById('classSelect').addEventListener('change', (e) => {
+  state.selectedClass = parseInt(e.target.value, 10);
+  saveData();
+  showSubjectsList();
+  renderAll();
+});
+
+document.getElementById('quarterSelect').addEventListener('change', (e) => {
+  state.selectedQuarter = parseInt(e.target.value, 10);
+  saveData();
+  showSubjectsList();
+  renderAll();
+});
+
+document.getElementById('loadPresetBtn').addEventListener('click', () => {
+  if(confirm(`Загрузить рекомендации предметных тем для ${state.selectedClass} класса (${state.selectedQuarter} четверть)?`)){
+    state.subjects = getQuarterPresets(state.selectedClass, state.selectedQuarter);
+    saveData();
+    renderAll();
+  }
+});
+
+/* ============================================================
+   GLOBAL SEARCH & LAUNCHERS
+   ============================================================ */
+function allTopics(){
+  return state.subjects.flatMap(s => s.topics.map(t => ({...t, subjectName: s.name, subjectColor: s.color})));
+}
+
+const searchInput = document.getElementById('searchInput');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+searchInput.addEventListener('input', (e) => {
+  const q = e.target.value.trim();
+  if(q) clearSearchBtn.classList.remove('hidden');
+  else clearSearchBtn.classList.add('hidden');
+  performSearch(q);
+});
+
+clearSearchBtn.addEventListener('click', () => {
+  searchInput.value = '';
+  clearSearchBtn.classList.add('hidden');
+  performSearch('');
+});
+
+function performSearch(q){
+  const box = document.getElementById('searchResults');
+  const list = document.getElementById('searchResultsList');
+  const webBtns = document.getElementById('webSearchButtons');
+  
+  if(!q){
+    box.classList.add('hidden');
+    document.getElementById('normalView').classList.remove('hidden');
+    return;
+  }
+
+  const queryLower = q.toLowerCase();
+  const results = allTopics().filter(t => {
+    const hay = [t.title, t.conspect, t.homework?.text || '', ...(t.tags||[])].join(' ').toLowerCase();
+    return hay.includes(queryLower);
+  });
+
+  box.classList.remove('hidden');
+  document.getElementById('normalView').classList.add('hidden');
+
+  document.getElementById('searchCount').textContent = `Найдено локально: ${results.length}`;
+
+  const encodedQ = encodeURIComponent(q);
+  webBtns.innerHTML = `
+    <a href="https://www.google.com/search?q=${encodedQ}" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1 hover:opacity-90 transition bg-blue-600">
+      <i data-lucide="globe" class="w-3.5 h-3.5"></i>Google
+    </a>
+    <a href="https://ru.wikipedia.org/w/index.php?search=${encodedQ}" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-gray-800">
+      <i data-lucide="book-open" class="w-3.5 h-3.5"></i>Википедия
+    </a>
+    <a href="https://www.youtube.com/results?search_query=${encodedQ}" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1 hover:opacity-90 transition bg-red-600">
+      <i data-lucide="youtube" class="w-3.5 h-3.5"></i>YouTube
+    </a>
+  `;
+
+  list.innerHTML = results.length ? results.map(t => `
+    <button class="topic-card-open focus-ring text-left card rounded-xl p-4 hover:shadow-md transition" data-topic="${t.id}" data-subject="${t.subjectId}">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-[10px] font-mono uppercase font-bold" style="color: ${t.subjectColor}">${escapeHtml(t.subjectName)}</span>
+        <span class="text-[11px] font-mono">${t.status === 'done' ? '🟢 Готово' : t.status === 'in_progress' ? '🟡 В процессе' : '🔴 Надо выучить'}</span>
+      </div>
+      <div class="font-display font-bold text-sm mb-1">${escapeHtml(t.title)}</div>
+      <p class="text-xs line-clamp-2" style="color: var(--ink-soft);">${escapeHtml(t.conspect || 'Нет конспекта')}</p>
+    </button>
+  `).join('') : '<div class="col-span-2 text-center text-sm py-6" style="color: var(--ink-soft);">Локальных заметок не найдено. Воспользуйтесь поиском в интернете выше!</div>';
+
+  document.querySelectorAll('.topic-card-open').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openTopicModal(btn.dataset.subject, btn.dataset.topic);
+    });
+  });
+
+  lucide.createIcons();
+}
+
+/* ============================================================
+   SMOOTH KANBAN DRAG AND DROP IMPLEMENTATION
+   ============================================================ */
+let draggedTopicId = null;
+
+function setupKanbanDragAndDrop() {
+  const cards = document.querySelectorAll('.draggable-card');
+  const cols = document.querySelectorAll('.kanban-col');
+
+  cards.forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      draggedTopicId = card.dataset.topicId;
+      card.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedTopicId);
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('is-dragging');
+      cols.forEach(c => c.classList.remove('drag-over'));
+      draggedTopicId = null;
+    });
+  });
+
+  cols.forEach(col => {
+    col.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      col.classList.add('drag-over');
+    });
+
+    col.addEventListener('dragleave', (e) => {
+      if (!col.contains(e.relatedTarget)) {
+        col.classList.remove('drag-over');
+      }
+    });
+
+    col.addEventListener('drop', (e) => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const topicId = e.dataTransfer.getData('text/plain') || draggedTopicId;
+      const targetStatus = col.dataset.status;
+
+      if(topicId && targetStatus && currentSubjectId) {
+        const sub = state.subjects.find(s => s.id === currentSubjectId);
+        if(sub) {
+          const topic = sub.topics.find(t => t.id === topicId);
+          if(topic && topic.status !== targetStatus) {
+            topic.status = targetStatus;
+            saveData();
+            renderSubjectDetail(currentSubjectId);
+          }
+        }
+      }
+    });
+  });
+}
+
+/* ============================================================
+   iOS STYLE POMODORO TIMER PICKER
+   ============================================================ */
+let pomodoroTimer = null;
+let pomoSecondsLeft = 25 * 60;
+let isPomoRunning = false;
+let selectedHours = 0;
+let selectedMinutes = 25;
+
+function initIosPickers() {
+  const hWheel = document.getElementById('pickerHours');
+  const mWheel = document.getElementById('pickerMinutes');
+  
+  hWheel.innerHTML = '';
+  mWheel.innerHTML = '';
+
+  // Padding items for centered snapping
+  const padTop = document.createElement('div'); padTop.style.height = '55px';
+  const padBot = document.createElement('div'); padBot.style.height = '55px';
+
+  hWheel.appendChild(padTop.cloneNode());
+  for(let h=0; h<=12; h++) {
+    const item = document.createElement('div');
+    item.className = `ios-picker-item ${h === selectedHours ? 'selected' : ''}`;
+    item.textContent = String(h).padStart(2, '0');
+    item.dataset.val = h;
+    hWheel.appendChild(item);
+  }
+  hWheel.appendChild(padBot.cloneNode());
+
+  mWheel.appendChild(padTop.cloneNode());
+  for(let m=0; m<60; m++) {
+    const item = document.createElement('div');
+    item.className = `ios-picker-item ${m === selectedMinutes ? 'selected' : ''}`;
+    item.textContent = String(m).padStart(2, '0');
+    item.dataset.val = m;
+    mWheel.appendChild(item);
+  }
+  mWheel.appendChild(padBot.cloneNode());
+
+  // Scroll listeners to pick values smoothly
+  const handleScroll = (wheel, isHours) => {
+    const items = wheel.querySelectorAll('.ios-picker-item');
+    const center = wheel.scrollTop + 75;
+    let closest = null;
+    let minDiff = Infinity;
+
+    items.forEach(item => {
+      const diff = Math.abs((item.offsetTop + 20) - center);
+      if(diff < minDiff) {
+        minDiff = diff;
+        closest = item;
+      }
+    });
+
+    if(closest) {
+      items.forEach(i => i.classList.remove('selected'));
+      closest.classList.add('selected');
+      const val = parseInt(closest.dataset.val, 10);
+      if(isHours) selectedHours = val;
+      else selectedMinutes = val;
+      
+      if(!isPomoRunning) {
+        pomoSecondsLeft = selectedHours * 3600 + selectedMinutes * 60;
+        updatePomoDisplay();
+      }
+    }
+  };
+
+  hWheel.addEventListener('scroll', () => handleScroll(hWheel, true));
+  mWheel.addEventListener('scroll', () => handleScroll(mWheel, false));
+}
+
+function updatePomoDisplay() {
+  const h = Math.floor(pomoSecondsLeft / 3600);
+  const m = Math.floor((pomoSecondsLeft % 3600) / 60);
+  const s = pomoSecondsLeft % 60;
+
+  const formatted = h > 0 
+    ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+  document.getElementById('pomoBigTimer').textContent = formatted;
+  document.getElementById('pomoDisplay').textContent = formatted;
+}
+
+document.getElementById('pomoBtn').addEventListener('click', () => {
+  document.getElementById('pomoModal').classList.remove('hidden');
+  initIosPickers();
+});
+
+document.getElementById('closePomoModal').addEventListener('click', () => {
+  document.getElementById('pomoModal').classList.add('hidden');
+});
+
+document.getElementById('pomoStartBtn').addEventListener('click', () => {
+  const btn = document.getElementById('pomoStartBtn');
+  if(isPomoRunning) {
+    clearInterval(pomodoroTimer);
+    isPomoRunning = false;
+    btn.textContent = 'Старт';
+    btn.style.background = 'var(--accent)';
+  } else {
+    if(pomoSecondsLeft <= 0) pomoSecondsLeft = 25 * 60;
+    isPomoRunning = true;
+    btn.textContent = 'Пауза';
+    btn.style.background = 'var(--warn)';
+
+    pomodoroTimer = setInterval(() => {
+      if(pomoSecondsLeft > 0) {
+        pomoSecondsLeft--;
+        updatePomoDisplay();
+      } else {
+        clearInterval(pomodoroTimer);
+        isPomoRunning = false;
+        btn.textContent = 'Старт';
+        btn.style.background = 'var(--accent)';
+        alert('🔔 Время таймера истекло! Сделайте перерыв.');
+      }
+    }, 1000);
+  }
+});
+
+document.getElementById('pomoResetBtn').addEventListener('click', () => {
+  clearInterval(pomodoroTimer);
+  isPomoRunning = false;
+  pomoSecondsLeft = selectedHours * 3600 + selectedMinutes * 60;
+  const btn = document.getElementById('pomoStartBtn');
+  btn.textContent = 'Старт';
+  btn.style.background = 'var(--accent)';
+  updatePomoDisplay();
+});
+
+/* ============================================================
+   RENDER ENGINE (SUBJECTS, TOPICS, KANBAN)
+   ============================================================ */
+function showSubjectsList(){
+  currentSubjectId = null;
+  document.getElementById('subjectView').classList.add('hidden');
+  document.getElementById('normalView').classList.remove('hidden');
+  document.getElementById('searchResults').classList.add('hidden');
+}
+
+function renderAll(){
+  renderClassSelect();
+  document.getElementById('classLabel').textContent = ` (${state.selectedClass} класс)`;
+  document.getElementById('quarterLabel').textContent = `${state.selectedQuarter} четверть`;
+  renderDeadlines();
+  renderQuickNotes();
+  renderSubjects();
+  applyTheme();
+}
+
+function renderSubjects(){
+  const grid = document.getElementById('subjectsGrid');
+  grid.innerHTML = '';
+
+  const classSubjects = state.subjects.filter(s => s.class === state.selectedClass);
+
+  if(!classSubjects.length){
+    grid.innerHTML = `
+      <div class="col-span-full card rounded-2xl p-8 text-center">
+        <p class="font-display font-bold text-base mb-2">Для ${state.selectedClass} класса пока нет предметов</p>
+        <p class="text-xs mb-4" style="color: var(--ink-soft);">Нажмите кнопку «Загрузить темы четверти» или создайте свой предмет.</p>
+        <button onclick="document.getElementById('loadPresetBtn').click()" class="px-4 py-2 text-xs font-medium text-white rounded-xl shadow-sm" style="background: var(--accent);">Загрузить программу ${state.selectedQuarter}-й четверти</button>
+      </div>`;
+    return;
+  }
+
+  classSubjects.forEach(s => {
+    const total = s.topics.length;
+    const doneCount = s.topics.filter(t => t.status === 'done').length;
+    const percent = total ? Math.round((doneCount / total) * 100) : 0;
+
+    const el = document.createElement('div');
+    el.className = 'tab-card card p-5 flex flex-col justify-between cursor-pointer hover:shadow-lg transition-all duration-200';
+    el.setAttribute('data-tab', s.name.slice(0, 12));
+    el.style.setProperty('--tab-color', s.color);
+
+    el.innerHTML = `
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-display font-bold text-xl">${escapeHtml(s.name)}</h3>
+          <button class="delete-sub-btn p-1 text-gray-400 hover:text-red-500 rounded" data-id="${s.id}"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </div>
+        <p class="text-xs font-mono mb-4" style="color: var(--ink-soft);">${total} тем • ${doneCount} выучено</p>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs font-mono mb-1.5">
+          <span>Прогресс</span>
+          <span>${percent}%</span>
+        </div>
+        <div class="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+          <div class="h-full transition-all" style="background: ${s.color}; width: ${percent}%;"></div>
+        </div>
+      </div>
+    `;
+
+    el.addEventListener('click', (e) => {
+      if(e.target.closest('.delete-sub-btn')) return;
+      openSubjectDetail(s.id);
+    });
+
+    el.querySelector('.delete-sub-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(confirm(`Удалить предмет "${s.name}" со всеми темами?`)){
+        state.subjects = state.subjects.filter(sub => sub.id !== s.id);
+        saveData();
+        renderAll();
+      }
+    });
+
+    grid.appendChild(el);
+  });
+  lucide.createIcons();
+}
+
+function openSubjectDetail(id){
+  currentSubjectId = id;
+  document.getElementById('normalView').classList.add('hidden');
+  document.getElementById('subjectView').classList.remove('hidden');
+  renderSubjectDetail(id);
+}
+
+function renderSubjectDetail(id){
+  const sub = state.subjects.find(s => s.id === id);
+  if(!sub) return showSubjectsList();
+
+  document.getElementById('subjectViewTitle').textContent = sub.name;
+  document.getElementById('subjectViewSub').textContent = `${sub.class} класс • ${state.selectedQuarter} Четверть • ${sub.topics.length} тем всего`;
+
+  const doneCount = sub.topics.filter(t => t.status === 'done').length;
+  const percent = sub.topics.length ? Math.round((doneCount / sub.topics.length) * 100) : 0;
+  document.getElementById('subjectProgressBar').style.width = `${percent}%`;
+
+  // Grid view
+  const grid = document.getElementById('topicsGrid');
+  grid.innerHTML = '';
+  sub.topics.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'card rounded-2xl p-4 flex flex-col justify-between hover:shadow-md transition cursor-pointer';
+    card.innerHTML = `
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[11px] font-mono px-2 py-0.5 rounded-full ${t.status==='done'?'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600':t.status==='in_progress'?'bg-amber-100 dark:bg-amber-900/40 text-amber-600':'bg-red-100 dark:bg-red-900/40 text-red-600'}">
+            ${t.status === 'done' ? '🟢 Готово' : t.status === 'in_progress' ? '🟡 В процессе' : '🔴 Надо выучить'}
+          </span>
+          ${t.homework?.dueDate ? `<span class="text-[10px] font-mono text-red-500">⏳ ${daysUntil(t.homework.dueDate)} дн.</span>` : ''}
+        </div>
+        <h4 class="font-display font-bold text-base mb-1.5">${escapeHtml(t.title)}</h4>
+        <p class="text-xs line-clamp-3 mb-3" style="color: var(--ink-soft);">${escapeHtml(t.conspect || 'Нажмите, чтобы добавить конспект...')}</p>
+      </div>
+      <div class="flex items-center justify-between pt-2 border-t" style="border-color: var(--paper-line);">
+        <div class="flex flex-wrap gap-1">${(t.tags||[]).map(tg => `<span class="tag-pill text-[10px]" style="color: var(--ink-soft);">${escapeHtml(tg)}</span>`).join('')}</div>
+        <i data-lucide="chevron-right" class="w-4 h-4" style="color: var(--ink-soft);"></i>
+      </div>
+    `;
+    card.addEventListener('click', () => openTopicModal(sub.id, t.id));
+    grid.appendChild(card);
+  });
+
+  // Board view (Kanban columns)
+  const colTodo = document.getElementById('colTodo');
+  const colInProgress = document.getElementById('colInProgress');
+  const colDone = document.getElementById('colDone');
+
+  colTodo.innerHTML = ''; colInProgress.innerHTML = ''; colDone.innerHTML = '';
+
+  let cTodo=0, cInProg=0, cDone=0;
+
+  sub.topics.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'draggable-card card rounded-xl p-3 shadow-sm hover:shadow-md transition';
+    card.setAttribute('draggable', 'true');
+    card.dataset.topicId = t.id;
+
+    card.innerHTML = `
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-display font-bold text-sm">${escapeHtml(t.title)}</span>
+        <i data-lucide="grip-vertical" class="w-3.5 h-3.5 opacity-40"></i>
+      </div>
+      ${t.homework?.text ? `<div class="text-[11px] font-mono p-1.5 rounded bg-gray-100 dark:bg-gray-800 mb-2">📝 ${escapeHtml(t.homework.text)}</div>` : ''}
+      <div class="flex items-center justify-between text-[10px] font-mono" style="color: var(--ink-soft);">
+        <span>${t.homework?.dueDate ? 'До: ' + t.homework.dueDate : ''}</span>
+        <button class="open-topic-btn hover:text-blue-500 font-medium">Открыть →</button>
+      </div>
+    `;
+
+    card.querySelector('.open-topic-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTopicModal(sub.id, t.id);
+    });
+
+    if(t.status === 'in_progress'){ colInProgress.appendChild(card); cInProg++; }
+    else if(t.status === 'done'){ colDone.appendChild(card); cDone++; }
+    else { colTodo.appendChild(card); cTodo++; }
+  });
+
+  document.getElementById('countTodo').textContent = cTodo;
+  document.getElementById('countInProgress').textContent = cInProg;
+  document.getElementById('countDone').textContent = cDone;
+
+  setupKanbanDragAndDrop();
+  lucide.createIcons();
+}
+
+/* Back and View Switcher */
+document.getElementById('backToSubjects').addEventListener('click', showSubjectsList);
+
+document.getElementById('viewGridBtn').addEventListener('click', () => {
+  document.getElementById('topicsGrid').classList.remove('hidden');
+  document.getElementById('topicsBoard').classList.add('hidden');
+  document.getElementById('viewGridBtn').classList.add('bg-gray-200', 'dark:bg-gray-700');
+  document.getElementById('viewBoardBtn').classList.remove('bg-gray-200', 'dark:bg-gray-700');
+});
+
+document.getElementById('viewBoardBtn').addEventListener('click', () => {
+  document.getElementById('topicsGrid').classList.add('hidden');
+  document.getElementById('topicsBoard').classList.remove('hidden');
+  document.getElementById('viewBoardBtn').classList.add('bg-gray-200', 'dark:bg-gray-700');
+  document.getElementById('viewGridBtn').classList.remove('bg-gray-200', 'dark:bg-gray-700');
+});
+
+/* ============================================================
+   TOPIC MODAL & EDITING
+   ============================================================ */
+function openTopicModal(subId, topicId){
+  currentSubjectId = subId;
+  currentTopicId = topicId;
+
+  const sub = state.subjects.find(s => s.id === subId);
+  const topic = sub.topics.find(t => t.id === topicId);
+
+  document.getElementById('topicTitleInput').value = topic.title;
+  document.getElementById('topicStatusSelect').value = topic.status;
+  document.getElementById('topicConspect').value = topic.conspect || '';
+  document.getElementById('topicHomework').value = topic.homework?.text || '';
+  document.getElementById('topicDueDate').value = topic.homework?.dueDate || '';
+
+  renderTopicLinks(topic);
+  renderTopicTags(topic);
+
+  // Clear simulated AI results
+  document.getElementById('webResourcesResult').classList.add('hidden');
+  document.getElementById('videosResult').innerHTML = '';
+  document.getElementById('tldrResult').innerHTML = '';
+
+  document.getElementById('topicModal').classList.remove('hidden');
+}
+
+function saveCurrentTopic(){
+  if(!currentSubjectId || !currentTopicId) return;
+  const sub = state.subjects.find(s => s.id === currentSubjectId);
+  if(!sub) return;
+  const topic = sub.topics.find(t => t.id === currentTopicId);
+  if(!topic) return;
+
+  topic.title = document.getElementById('topicTitleInput').value.trim() || 'Без названия';
+  topic.status = document.getElementById('topicStatusSelect').value;
+  topic.conspect = document.getElementById('topicConspect').value;
+  topic.homework = {
+    text: document.getElementById('topicHomework').value,
+    dueDate: document.getElementById('topicDueDate').value
+  };
+
+  saveData();
+  renderSubjectDetail(currentSubjectId);
+}
+
+['topicTitleInput', 'topicStatusSelect', 'topicConspect', 'topicHomework', 'topicDueDate'].forEach(id => {
+  document.getElementById(id).addEventListener('change', saveCurrentTopic);
+  document.getElementById(id).addEventListener('input', saveCurrentTopic);
+});
+
+document.getElementById('closeTopicModal').addEventListener('click', () => {
+  document.getElementById('topicModal').classList.add('hidden');
+});
+
+document.getElementById('deleteTopicBtn').addEventListener('click', () => {
+  if(confirm('Удалить эту тему?')){
+    const sub = state.subjects.find(s => s.id === currentSubjectId);
+    if(sub){
+      sub.topics = sub.topics.filter(t => t.id !== currentTopicId);
+      saveData();
+      document.getElementById('topicModal').classList.add('hidden');
+      renderSubjectDetail(currentSubjectId);
+    }
+  }
+});
+
+/* Formatting Toolbar */
+document.querySelectorAll('.fmt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const area = document.getElementById('topicConspect');
+    const fmt = btn.dataset.fmt;
+    const start = area.selectionStart;
+    const end = area.selectionEnd;
+    const text = area.value;
+
+    area.value = text.slice(0, start) + fmt + text.slice(end);
+    saveCurrentTopic();
+  });
+});
+
+/* Links & Tags */
+function renderTopicLinks(topic){
+  const container = document.getElementById('topicLinksList');
+  container.innerHTML = (topic.links || []).map((l, idx) => `
+    <div class="flex items-center justify-between p-2 rounded-lg card text-xs">
+      <a href="${escapeHtml(l.url)}" target="_blank" class="font-medium text-blue-600 hover:underline flex items-center gap-1">
+        <i data-lucide="link" class="w-3 h-3"></i>${escapeHtml(l.title)}
+      </a>
+      <button onclick="removeTopicLink(${idx})" class="text-gray-400 hover:text-red-500"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+    </div>
+  `).join('');
+  lucide.createIcons();
+}
+
+document.getElementById('addLinkBtn').addEventListener('click', () => {
+  const title = document.getElementById('newLinkTitle').value.trim();
+  const url = document.getElementById('newLinkUrl').value.trim();
+  if(!title || !url) return;
+
+  const sub = state.subjects.find(s => s.id === currentSubjectId);
+  const topic = sub.topics.find(t => t.id === currentTopicId);
+  if(!topic.links) topic.links = [];
+  topic.links.push({ title, url });
+
+  document.getElementById('newLinkTitle').value = '';
+  document.getElementById('newLinkUrl').value = '';
+  saveData();
+  renderTopicLinks(topic);
+});
+
+window.removeTopicLink = function(idx){
+  const sub = state.subjects.find(s => s.id === currentSubjectId);
+  const topic = sub.topics.find(t => t.id === currentTopicId);
+  topic.links.splice(idx, 1);
+  saveData();
+  renderTopicLinks(topic);
+};
+
+function renderTopicTags(topic){
+  const container = document.getElementById('topicTagsList');
+  container.innerHTML = (topic.tags || []).map((t, idx) => `
+    <span class="tag-pill px-2 py-0.5 rounded-full flex items-center gap-1 bg-gray-200 dark:bg-gray-700">
+      ${escapeHtml(t)}
+      <button onclick="removeTopicTag(${idx})" class="hover:text-red-500">×</button>
+    </span>
+  `).join('');
+}
+
+document.getElementById('newTagInput').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    let tag = e.target.value.trim();
+    if(!tag) return;
+    if(!tag.startsWith('#')) tag = '#' + tag;
+
+    const sub = state.subjects.find(s => s.id === currentSubjectId);
+    const topic = sub.topics.find(t => t.id === currentTopicId);
+    if(!topic.tags) topic.tags = [];
+    topic.tags.push(tag);
+
+    e.target.value = '';
+    saveData();
+    renderTopicTags(topic);
+  }
+});
+
+window.removeTopicTag = function(idx){
+  const sub = state.subjects.find(s => s.id === currentSubjectId);
+  const topic = sub.topics.find(t => t.id === currentTopicId);
+  topic.tags.splice(idx, 1);
+  saveData();
+  renderTopicTags(topic);
+};
+
+/* Smart Web Helpers */
+document.getElementById('fetchWebResourcesBtn').addEventListener('click', () => {
+  const title = document.getElementById('topicTitleInput').value;
+  const resBox = document.getElementById('webResourcesResult');
+  resBox.classList.remove('hidden');
+  const enc = encodeURIComponent(title);
+
+  resBox.innerHTML = `
+    <div class="text-xs font-semibold uppercase tracking-wider mb-2">Найдено в сети по теме "${escapeHtml(title)}":</div>
+    <div class="space-y-1.5 text-xs">
+      <a href="https://ru.wikipedia.org/w/index.php?search=${enc}" target="_blank" class="block p-2 rounded card hover:bg-gray-100 dark:hover:bg-gray-800 text-blue-500 font-medium">📖 Раздел статьи в Википедии →</a>
+      <a href="https://www.google.com/search?q=${enc}+конспект+формулы" target="_blank" class="block p-2 rounded card hover:bg-gray-100 dark:hover:bg-gray-800 text-blue-500 font-medium">🔍 Готовые конспекты и формулы в Google →</a>
+    </div>
+  `;
+});
+
+document.getElementById('findVideosBtn').addEventListener('click', () => {
+  const title = document.getElementById('topicTitleInput').value;
+  const container = document.getElementById('videosResult');
+  const enc = encodeURIComponent(title);
+
+  container.innerHTML = `
+    <a href="https://www.youtube.com/results?search_query=${enc}+урок" target="_blank" class="card p-2.5 rounded-lg flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800">
+      <i data-lucide="play-circle" class="w-5 h-5 text-red-500"></i>
+      <span class="text-xs font-medium">Видеоурок: ${escapeHtml(title)}</span>
+    </a>
+    <a href="https://www.youtube.com/results?search_query=${enc}+разбор+задач" target="_blank" class="card p-2.5 rounded-lg flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800">
+      <i data-lucide="play-circle" class="w-5 h-5 text-red-500"></i>
+      <span class="text-xs font-medium">Разбор практических задач</span>
+    </a>
+  `;
+  lucide.createIcons();
+});
+
+document.getElementById('genTldrBtn').addEventListener('click', () => {
+  const conspect = document.getElementById('topicConspect').value;
+  const container = document.getElementById('tldrResult');
+
+  if(!conspect.trim()){
+    container.innerHTML = '<li class="text-gray-400 text-xs">Заполните конспект выше, чтобы сгенерировать выжимку.</li>';
+    return;
+  }
+
+  const lines = conspect.split('\n').filter(l => l.trim().length > 0);
+  container.innerHTML = lines.slice(0, 4).map(l => `<li class="flex items-start gap-1.5"><span class="text-emerald-500 font-bold">•</span> <span>${escapeHtml(l.replace(/^[#\-\*]\s*/, ''))}</span></li>`).join('');
+});
+
+/* ============================================================
+   NEW SUBJECT MODAL & QUICK NOTES & DEADLINES
+   ============================================================ */
+function renderColorPicker(){
+  const box = document.getElementById('colorPicker');
+  box.innerHTML = '';
+  SUBJECT_COLORS.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = `w-7 h-7 rounded-full transition transform ${c === pickedColor ? 'scale-125 ring-2 ring-offset-2 ring-blue-500' : ''}`;
+    btn.style.background = c;
+    btn.addEventListener('click', () => {
+      pickedColor = c;
+      renderColorPicker();
+    });
+    box.appendChild(btn);
+  });
+}
+
+document.getElementById('addSubjectBtn').addEventListener('click', () => {
+  pickedColor = SUBJECT_COLORS[0];
+  renderColorPicker();
+  document.getElementById('newSubjectName').value = '';
+  document.getElementById('subjectModal').classList.remove('hidden');
+});
+
+document.getElementById('cancelSubjectBtn').addEventListener('click', () => {
+  document.getElementById('subjectModal').classList.add('hidden');
+});
+
+document.getElementById('saveSubjectBtn').addEventListener('click', () => {
+  const name = document.getElementById('newSubjectName').value.trim();
+  if(!name) return;
+
+  state.subjects.push({
+    id: uid(),
+    name: name,
+    class: state.selectedClass,
+    color: pickedColor,
+    topics: []
+  });
+
+  saveData();
+  document.getElementById('subjectModal').classList.add('hidden');
+  renderSubjects();
+});
+
+/* Deadlines & Quick Notes */
+function renderDeadlines(){
+  const list = document.getElementById('deadlinesList');
+  list.innerHTML = '';
+
+  const deadlines = [];
+  state.subjects.filter(s => s.class === state.selectedClass).forEach(s => {
+    s.topics.forEach(t => {
+      if(t.homework?.dueDate && t.status !== 'done'){
+        deadlines.push({
+          ...t,
+          subjectName: s.name,
+          subjectColor: s.color,
+          daysLeft: daysUntil(t.homework.dueDate)
+        });
+      }
+    });
+  });
+
+  deadlines.sort((a,b) => a.daysLeft - b.daysLeft);
+  document.getElementById('deadlineCount').textContent = `${deadlines.length} задач`;
+
+  if(!deadlines.length){
+    list.innerHTML = '<div class="text-xs py-2" style="color: var(--ink-soft);">Нет срочных дедлайнов. Отличная работа! 🎉</div>';
+    return;
+  }
+
+  deadlines.forEach(d => {
+    const card = document.createElement('div');
+    card.className = 'card rounded-xl p-3 min-w-[220px] max-w-[240px] flex-shrink-0 cursor-pointer hover:shadow-md transition';
+    card.innerHTML = `
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-[10px] font-mono font-bold uppercase" style="color: ${d.subjectColor}">${escapeHtml(d.subjectName)}</span>
+        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded ${d.daysLeft<=1?'bg-red-100 text-red-600 font-bold':'bg-amber-100 text-amber-700'}">${d.daysLeft<=0 ? 'Сегодня!' : d.daysLeft + ' дн.'}</span>
+      </div>
+      <div class="font-display font-bold text-xs mb-1 truncate">${escapeHtml(d.title)}</div>
+      <p class="text-[11px] truncate" style="color: var(--ink-soft);">${escapeHtml(d.homework.text || 'Домашнее задание')}</p>
+    `;
+    card.addEventListener('click', () => openTopicModal(d.subjectId, d.id));
+    list.appendChild(card);
+  });
+}
+
+function renderQuickNotes(){
+  const sec = document.getElementById('quickNotesSection');
+  const list = document.getElementById('quickNotesList');
+  list.innerHTML = '';
+
+  if(!state.quickNotes || !state.quickNotes.length){
+    sec.classList.add('hidden');
+    return;
+  }
+  sec.classList.remove('hidden');
+
+  state.quickNotes.forEach((n, idx) => {
+    const card = document.createElement('div');
+    card.className = 'card rounded-xl p-3 min-w-[200px] flex-shrink-0 relative group';
+    card.innerHTML = `
+      <p class="text-xs leading-relaxed pr-4">${escapeHtml(n.text)}</p>
+      ${n.link ? `<a href="${escapeHtml(n.link)}" target="_blank" class="text-[10px] text-blue-500 underline block mt-1">Ссылка →</a>` : ''}
+      <button onclick="deleteQuickNote(${idx})" class="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+    `;
+    list.appendChild(card);
+  });
+  lucide.createIcons();
+}
+
+document.getElementById('quickNoteBtn').addEventListener('click', () => {
+  document.getElementById('quickNoteText').value = '';
+  document.getElementById('quickNoteLink').value = '';
+  document.getElementById('quickNoteModal').classList.remove('hidden');
+});
+
+document.getElementById('cancelQuickNoteBtn').addEventListener('click', () => {
+  document.getElementById('quickNoteModal').classList.add('hidden');
+});
+
+document.getElementById('saveQuickNoteBtn').addEventListener('click', () => {
+  const text = document.getElementById('quickNoteText').value.trim();
+  if(!text) return;
+  const link = document.getElementById('quickNoteLink').value.trim();
+
+  if(!state.quickNotes) state.quickNotes = [];
+  state.quickNotes.push({ id: uid(), text, link, createdAt: Date.now() });
+
+  saveData();
+  document.getElementById('quickNoteModal').classList.add('hidden');
+  renderQuickNotes();
+});
+
+window.deleteQuickNote = function(idx){
+  state.quickNotes.splice(idx, 1);
+  saveData();
+  renderQuickNotes();
+};
+
+/* Export / Import */
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+  const dlAnchor = document.createElement('a');
+  dlAnchor.setAttribute("href", dataStr);
+  dlAnchor.setAttribute("download", `studyhub_backup_${new Date().toISOString().slice(0,10)}.json`);
+  document.body.appendChild(dlAnchor);
+  dlAnchor.click();
+  dlAnchor.remove();
+});
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  document.getElementById('importFileInput').click();
+});
+
+document.getElementById('importFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try{
+      const imported = JSON.parse(evt.target.result);
+      if(imported && imported.subjects){
+        state = imported;
+        saveData();
+        renderAll();
+        alert('Резервная копия успешно загружена!');
+      }
+    }catch(err){ alert('Ошибка при чтении файла бэкапа.'); }
+  };
+  reader.readAsText(file);
+});
+
+/* INITIALIZATION */
+renderAll();
+updatePomoDisplay();
+</script>
+</body>
+</html>
